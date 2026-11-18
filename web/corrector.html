@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Corrector ortográfico y gramatical</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f4f6fb; --panel:#ffffff; --ink:#1d2433; --muted:#6b7385; --line:#e3e7ef;
+  --brand:#2f6df6; --brand-ink:#fff;
+  --ort:#e5484d; --ort-bg:rgba(229,72,77,.16);
+  --gra:#f0a020; --gra-bg:rgba(240,160,32,.20);
+  --pun:#8e4ec6; --pun-bg:rgba(142,78,198,.16);
+  --est:#2f6df6; --est-bg:rgba(47,109,246,.14);
+  --font:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#12151c;--panel:#1b1f29;--ink:#e8ebf2;--muted:#9aa3b5;--line:#2c3240;
+  --ort-bg:rgba(229,72,77,.28);--gra-bg:rgba(240,160,32,.28);--pun-bg:rgba(142,78,198,.30);--est-bg:rgba(47,109,246,.28);}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);}
+header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:16px 24px;background:var(--panel);border-bottom:1px solid var(--line)}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px}
+.logo .dot{width:30px;height:30px;border-radius:8px;background:var(--brand);color:#fff;display:grid;place-items:center;font-size:16px}
+header .spacer{flex:1}
+select,button{font-family:inherit;font-size:14px}
+select{padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink)}
+.btn{padding:9px 16px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer;font-weight:500}
+.btn:hover{border-color:var(--brand)}
+.btn.primary{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn:disabled{opacity:.55;cursor:default}
+main{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:20px;padding:20px 24px;max-width:1300px;margin:0 auto}
+@media (max-width:900px){main{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px}
+.editor-card{display:flex;flex-direction:column;min-height:70vh}
+.toolbar{display:flex;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.toolbar .info{color:var(--muted);font-size:13px;margin-left:auto}
+.editor-wrap{position:relative;flex:1;min-height:420px}
+.backdrop,textarea{
+  position:absolute;inset:0;margin:0;padding:22px 24px;border:0;
+  font-family:var(--font);font-size:17px;line-height:1.75;letter-spacing:0;
+  white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;overflow:auto;
+}
+.backdrop{color:transparent;pointer-events:none;z-index:1}
+textarea{z-index:2;background:transparent;color:var(--ink);resize:none;outline:none;caret-color:var(--ink)}
+textarea::placeholder{color:var(--muted)}
+mark{color:transparent;border-radius:3px;padding:0;background:var(--ort-bg);border-bottom:2px solid var(--ort)}
+mark.gra{background:var(--gra-bg);border-color:var(--gra)}
+mark.pun{background:var(--pun-bg);border-color:var(--pun)}
+mark.est{background:var(--est-bg);border-color:var(--est)}
+mark.active{outline:2px solid currentColor;outline-color:var(--ink);outline-offset:1px}
+aside{display:flex;flex-direction:column;gap:14px}
+.summary{padding:16px}
+.summary h2{margin:0 0 10px;font-size:15px}
+.counts{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.count{border-radius:10px;padding:8px;text-align:center;background:var(--bg)}
+.count b{display:block;font-size:20px}
+.count span{font-size:11px;color:var(--muted)}
+.count.ort b{color:var(--ort)}.count.gra b{color:var(--gra)}.count.pun b{color:var(--pun)}.count.est b{color:var(--est)}
+.list{display:flex;flex-direction:column;gap:10px;max-height:62vh;overflow:auto;padding-right:2px}
+.issue{padding:14px;border-left:4px solid var(--ort);cursor:pointer;transition:transform .1s}
+.issue.gra{border-left-color:var(--gra)}.issue.pun{border-left-color:var(--pun)}.issue.est{border-left-color:var(--est)}
+.issue.active{box-shadow:0 0 0 2px var(--brand)}
+.issue .tag{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+.issue .orig{margin:6px 0;font-size:15px}
+.issue .orig s{color:var(--ort);text-decoration-thickness:2px}
+.issue .msg{font-size:13px;color:var(--muted);margin:4px 0 10px;line-height:1.45}
+.sugs{display:flex;flex-wrap:wrap;gap:6px}
+.sug{background:var(--brand);color:#fff;border:0;border-radius:6px;padding:6px 10px;cursor:pointer;font-weight:600;font-size:14px}
+.sug:hover{filter:brightness(1.1)}
+.ignore{background:transparent;border:0;color:var(--muted);cursor:pointer;font-size:13px;margin-left:auto;text-decoration:underline}
+.empty{padding:26px 18px;text-align:center;color:var(--muted);font-size:14px;line-height:1.5}
+.empty .big{font-size:34px;display:block;margin-bottom:6px}
+.status{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.spinner{width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--brand);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.banner{margin:0 24px;max-width:1252px;padding:10px 14px;border-radius:10px;background:var(--gra-bg);font-size:14px;display:none}
+.banner.show{display:block;margin:14px auto 0}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--panel);padding:10px 16px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+label.chk{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"><div class="dot">✓</div>Corrector</div>
+  <select id="lang" title="Idioma del texto">
+    <option value="español">Español</option>
+    <option value="inglés">Inglés</option>
+    <option value="portugués">Portugués</option>
+    <option value="francés">Francés</option>
+    <option value="italiano">Italiano</option>
+    <option value="alemán">Alemán</option>
+  </select>
+  <select id="mode" title="Qué revisar">
+    <option value="completo">Ortografía, gramática y puntuación</option>
+    <option value="ortografia">Solo ortografía</option>
+    <option value="estilo">Todo + sugerencias de estilo</option>
+  </select>
+  <div class="spacer"></div>
+  <div class="status" id="status"></div>
+  <button class="btn primary" id="check">Revisar texto</button>
+</header>
+
+<div class="banner" id="banner"></div>
+
+<main>
+  <section class="card editor-card">
+    <div class="toolbar">
+      <button class="btn" id="applyAll" disabled>Aplicar todas</button>
+      <button class="btn" id="copy">Copiar texto</button>
+      <button class="btn" id="clear">Borrar</button>
+      <label class="chk"><input type="checkbox" id="auto"> Revisar al dejar de escribir</label>
+      <span class="info" id="info">0 palabras · 0 caracteres</span>
+    </div>
+    <div class="editor-wrap">
+      <div class="backdrop" id="backdrop"></div>
+      <textarea id="text" spellcheck="false" placeholder="Escribe o pega aquí tu texto y pulsa «Revisar texto»…">Hola, ayer fuimos a la playa con mis amigos y la pasamos muy vien. Haci que decidimos volver el proximo fin de semana, aunque no se si va a llover. Mi hermana dijo que ella tambien quiere hir, pero tiene que trabajar haya en la oficina.</textarea>
+    </div>
+  </section>
+
+  <aside>
+    <div class="card summary">
+      <h2 id="sumTitle">Resultados</h2>
+      <div class="counts">
+        <div class="count ort"><b id="cOrt">0</b><span>Ortografía</span></div>
+        <div class="count gra"><b id="cGra">0</b><span>Gramática</span></div>
+        <div class="count pun"><b id="cPun">0</b><span>Puntuación</span></div>
+        <div class="count est"><b id="cEst">0</b><span>Estilo</span></div>
+      </div>
+    </div>
+    <div class="list" id="list">
+      <div class="card empty"><span class="big">📝</span>Pulsa <b>Revisar texto</b> para buscar errores. Las palabras con problemas se subrayan en el texto.</div>
+    </div>
+  </aside>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const ta = $('text'), bd = $('backdrop'), list = $('list');
+const MAX = 8000;
+let issues = [];       // {id,start,end,original,sugerencias,tipo,explicacion}
+let activeId = null, sampleFn = null, busy = false, autoTimer = null, lastChecked = '';
+const TYPE = {ortografia:'ort', 'ortografía':'ort', gramatica:'gra', 'gramática':'gra', puntuacion:'pun', 'puntuación':'pun', estilo:'est'};
+const LABEL = {ort:'Ortografía', gra:'Gramática', pun:'Puntuación', est:'Estilo'};
+
+try{ const s = localStorage.getItem('corrector-draft'); if(s) ta.value = s; }catch(e){}
+
+(async()=>{
+  try{ sampleFn = await claude.use('sample'); }catch(e){ sampleFn = null; }
+  if(!sampleFn){
+    $('banner').textContent = 'La revisión no está disponible en esta vista. Abre la página desde claude.ai con tu cuenta para usarla.';
+    $('banner').classList.add('show');
+    $('check').disabled = true;
+  }
+})();
+
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),1800);}
+
+function render(){
+  const text = ta.value;
+  const sorted = [...issues].sort((a,b)=>a.start-b.start);
+  let html='', pos=0;
+  for(const it of sorted){
+    if(it.start<pos) continue;
+    html += esc(text.slice(pos,it.start));
+    html += `<mark class="${it.tipo}${it.id===activeId?' active':''}" data-id="${it.id}">${esc(text.slice(it.start,it.end))}</mark>`;
+    pos = it.end;
+  }
+  html += esc(text.slice(pos)) + '\n';
+  bd.innerHTML = html;
+  bd.scrollTop = ta.scrollTop;
+  renderList(); updateInfo();
+}
+
+function renderList(){
+  const c={ort:0,gra:0,pun:0,est:0}; issues.forEach(i=>c[i.tipo]++);
+  $('cOrt').textContent=c.ort;$('cGra').textContent=c.gra;$('cPun').textContent=c.pun;$('cEst').textContent=c.est;
+  $('applyAll').disabled = !issues.some(i=>i.sugerencias.length);
+  if(!lastChecked){ return; }
+  if(!issues.length){
+    list.innerHTML = '<div class="card empty"><span class="big">🎉</span>No se encontraron errores.</div>';
+    $('sumTitle').textContent='Resultados'; return;
+  }
+  $('sumTitle').textContent = issues.length + (issues.length===1?' sugerencia':' sugerencias');
+  list.innerHTML='';
+  [...issues].sort((a,b)=>a.start-b.start).forEach(it=>{
+    const d=document.createElement('div');
+    d.className=`card issue ${it.tipo}${it.id===activeId?' active':''}`;
+    d.dataset.id=it.id;
+    d.innerHTML=`<div class="tag">${LABEL[it.tipo]}</div>
+      <div class="orig"><s>${esc(it.original)}</s></div>
+      <div class="msg">${esc(it.explicacion||'')}</div>
+      <div class="sugs"></div>`;
+    const sg=d.querySelector('.sugs');
+    it.sugerencias.slice(0,4).forEach(s=>{
+      const b=document.createElement('button');b.className='sug';b.textContent=s===''?'(eliminar)':s;
+      b.onclick=e=>{e.stopPropagation();applyFix(it.id,s);};sg.appendChild(b);
+    });
+    const ig=document.createElement('button');ig.className='ignore';ig.textContent='Ignorar';
+    ig.onclick=e=>{e.stopPropagation();issues=issues.filter(x=>x.id!==it.id);render();};
+    sg.appendChild(ig);
+    d.onclick=()=>focusIssue(it.id);
+    list.appendChild(d);
+  });
+}
+
+function focusIssue(id){
+  activeId=id; const it=issues.find(i=>i.id===id); render();
+  if(it){ ta.focus(); ta.setSelectionRange(it.start,it.end);
+    const m=bd.querySelector(`mark[data-id="${id}"]`);
+    if(m){ ta.scrollTop = Math.max(0, m.offsetTop - ta.clientHeight/3); bd.scrollTop=ta.scrollTop; } }
+  const card=list.querySelector(`.issue[data-id="${id}"]`); if(card) card.scrollIntoView({block:'nearest',behavior:'smooth'});
+}
+
+function applyFix(id,rep){
+  const it=issues.find(i=>i.id===id); if(!it) return;
+  const t=ta.value, delta=rep.length-(it.end-it.start);
+  ta.value = t.slice(0,it.start)+rep+t.slice(it.end);
+  issues = issues.filter(i=>i.id!==id).map(i=> i.start>=it.end ? {...i,start:i.start+delta,end:i.end+delta} : i)
+                 .filter(i=> i.end<=it.start || i.start>=it.start+rep.length);
+  lastText = ta.value; save(); render();
+}
+
+$('applyAll').onclick=()=>{
+  const sorted=[...issues].filter(i=>i.sugerencias.length).sort((a,b)=>b.start-a.start);
+  let t=ta.value;
+  for(const it of sorted) t=t.slice(0,it.start)+it.sugerencias[0]+t.slice(it.end);
+  ta.value=t; issues=issues.filter(i=>!i.sugerencias.length); lastText=t; save(); render();
+  toast(sorted.length+' correcciones aplicadas');
+};
+
+// Mantiene las marcas alineadas cuando el usuario edita el texto
+let lastText = ta.value;
+ta.addEventListener('input',()=>{
+  const nw=ta.value, old=lastText;
+  let p=0; while(p<old.length&&p<nw.length&&old[p]===nw[p]) p++;
+  let so=old.length, sn=nw.length; while(so>p&&sn>p&&old[so-1]===nw[sn-1]){so--;sn--;}
+  const delta=nw.length-old.length;
+  issues = issues.filter(i=> i.end<=p || i.start>=so).map(i=> i.start>=so ? {...i,start:i.start+delta,end:i.end+delta} : i);
+  lastText=nw; save(); render();
+  if($('auto').checked){ clearTimeout(autoTimer); autoTimer=setTimeout(()=>{ if(ta.value.trim()&&ta.value!==lastChecked) check(); },2000); }
+});
+ta.addEventListener('scroll',()=>{bd.scrollTop=ta.scrollTop;});
+ta.addEventListener('click',()=>{
+  const c=ta.selectionStart; const it=issues.find(i=>c>=i.start&&c<=i.end);
+  if(it && it.id!==activeId){ activeId=it.id; render(); const card=list.querySelector(`.issue[data-id="${it.id}"]`); if(card) card.scrollIntoView({block:'nearest',behavior:'smooth'}); }
+});
+
+function save(){ try{localStorage.setItem('corrector-draft',ta.value);}catch(e){} }
+function updateInfo(){
+  const t=ta.value; const w=(t.trim().match(/\S+/g)||[]).length;
+  $('info').textContent = `${w} palabras · ${t.length} caracteres` + (t.length>MAX?` (máx. ${MAX})`:'');
+}
+
+$('copy').onclick=async()=>{ try{ await navigator.clipboard.writeText(ta.value); toast('Texto copiado'); }catch(e){ ta.select(); toast('Selecciona y copia con Ctrl+C'); } };
+$('clear').onclick=()=>{ ta.value=''; issues=[]; lastText=''; lastChecked=''; save(); render();
+  list.innerHTML='<div class="card empty"><span class="big">📝</span>Escribe o pega tu texto y pulsa <b>Revisar texto</b>.</div>'; ta.focus(); };
+
+function buildPrompt(text){
+  const lang=$('lang').value, mode=$('mode').value;
+  let alcance = 'errores de ortografía (incluidas tildes y mayúsculas), gramática (concordancia, tiempos verbales, uso de palabras confundidas como haya/allá/halla, a ver/haber) y puntuación';
+  if(mode==='ortografia') alcance='solo errores de ortografía (palabras mal escritas, tildes, mayúsculas). No reportes nada más';
+  if(mode==='estilo') alcance += ', y además sugerencias de estilo (repeticiones, frases poco claras o redundantes), marcadas como "estilo"';
+  return `Eres un corrector profesional como LanguageTool. Revisa el texto en ${lang} que va entre <texto> y </texto> y detecta ${alcance}.
+No cambies el sentido ni corrijas cosas que son correctas. No reportes nombres propios válidos ni expresiones coloquiales aceptadas.
+
+Responde SOLO con JSON válido, sin texto adicional, con esta forma:
+{"errores":[{"original":"fragmento exacto copiado del texto, lo más corto posible (normalmente una palabra)","antes":"las 1 a 3 palabras que van justo antes del fragmento en el texto, copiadas exactamente (vacío si está al inicio)","sugerencias":["corrección 1","corrección 2"],"tipo":"ortografía|gramática|puntuación|estilo","explicacion":"explicación breve en español"}]}
+
+Reglas: "original" debe aparecer literalmente en el texto. Para un signo de puntuación que falta, usa como "original" la palabra anterior y como sugerencia esa palabra con el signo. Reporta cada error una sola vez, en el orden en que aparecen. Si no hay errores responde {"errores":[]}.
+
+<texto>
+${text}
+</texto>`;
+}
+
+function locate(text, errs){
+  const out=[], used=[]; let cursor=0, n=0;
+  const overlaps=(s,e)=>used.some(([a,b])=>s<b&&e>a);
+  for(const e of errs){
+    const o=(e.original||'').toString(); if(!o) continue;
+    const before=(e.antes||'').toString().trim();
+    let cands=[], i=text.indexOf(o);
+    while(i!==-1){ cands.push(i); i=text.indexOf(o,i+1); }
+    if(!cands.length) continue;
+    const isWord = /^[\p{L}\p{N}]/u.test(o) && /[\p{L}\p{N}]$/u.test(o);
+    const wordOk = s => !isWord || (!/[\p{L}\p{N}]/u.test(text[s-1]||'') && !/[\p{L}\p{N}]/u.test(text[s+o.length]||''));
+    cands = cands.filter(s=>!overlaps(s,s+o.length));
+    const goodW = cands.filter(wordOk); if(goodW.length) cands=goodW;
+    if(!cands.length) continue;
+    let pick = before ? cands.find(s=>text.slice(Math.max(0,s-before.length-4),s).replace(/\s+/g,' ').trim().endsWith(before.replace(/\s+/g,' '))) : undefined;
+    if(pick===undefined) pick = cands.find(s=>s>=cursor) ?? cands[0];
+    const tipo = TYPE[(e.tipo||'').toString().toLowerCase().trim()] || 'ort';
+    let sugs = Array.isArray(e.sugerencias)? e.sugerencias.map(String).filter(s=>s!==o) : [];
+    if(!sugs.length && tipo!=='est') continue;
+    used.push([pick,pick+o.length]); cursor=pick+o.length;
+    out.push({id:'e'+(n++)+'_'+Date.now(), start:pick, end:pick+o.length, original:o, sugerencias:sugs, tipo, explicacion:(e.explicacion||'').toString()});
+  }
+  return out;
+}
+
+function parseJSON(raw){
+  if(raw && typeof raw==='object') return raw;
+  const s=String(raw); const a=s.indexOf('{'), b=s.lastIndexOf('}');
+  return JSON.parse(s.slice(a,b+1));
+}
+
+async function check(){
+  if(busy || !sampleFn) return;
+  const text=ta.value;
+  if(!text.trim()){ toast('Escribe algún texto primero'); return; }
+  if(text.length>MAX){ toast(`El texto es muy largo (máx. ${MAX} caracteres)`); return; }
+  busy=true; $('check').disabled=true;
+  $('status').innerHTML='<div class="spinner"></div> Revisando…';
+  try{
+    const prompt=buildPrompt(text);
+    let data;
+    try{
+      data = sampleFn.json ? await sampleFn.json(prompt,{modelTier:'default'}) : null;
+    }catch(e){ if(e && (e.code==='not_granted'||e.code==='rate_limited')) throw e; data=null; }
+    if(!data){ const r=await sampleFn(prompt,{modelTier:'default'}); data=parseJSON(r.text); }
+    data = parseJSON(data);
+    const errs = Array.isArray(data) ? data : (data.errores||data.errors||[]);
+    if(ta.value!==text){ /* el usuario editó mientras se revisaba */ }
+    issues = locate(ta.value===text?text:ta.value, errs);
+    lastChecked=text; activeId=null; render();
+    $('status').textContent = issues.length ? `${issues.length} encontrados` : 'Sin errores';
+  }catch(e){
+    console.log('[corrector]',e);
+    let m='No se pudo revisar el texto. Intenta de nuevo.';
+    if(e && e.code==='not_granted') m='Necesitas permitir que la página use Claude para revisar.';
+    if(e && e.code==='rate_limited') m='Demasiadas revisiones seguidas. Espera un momento.';
+    $('status').textContent=''; toast(m);
+  }finally{ busy=false; $('check').disabled=!sampleFn; }
+}
+$('check').onclick=check;
+ta.addEventListener('keydown',e=>{ if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();check();} });
+render();
+</script>
+</body>
+</html>
