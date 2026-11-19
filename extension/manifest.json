@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Corrector para WhatsApp Web",
-  "version": "1.2.0",
-  "description": "Revisa la ortografía y gramática de tus mensajes en WhatsApp Web antes de enviarlos.",
+  "version": "2.0.0",
+  "description": "Subraya los errores de ortografía y gramática mientras escribes en WhatsApp Web y te sugiere cómo corregirlos.",
   "permissions": [
     "storage"
   ],

@@ -6,7 +6,7 @@ Corrector de ortografía, gramática y puntuación al estilo de LanguageTool, pe
 
 | Carpeta | Qué es |
 |---|---|
-| `extension/` | Extensión de Chrome/Edge (Manifest V3) que añade un botón ✓ en WhatsApp Web para revisar el mensaje antes de enviarlo. |
+| `extension/` | Extensión de Chrome/Edge (Manifest V3) que subraya los errores mientras escribes en WhatsApp Web y sugiere correcciones. |
 | `servicio/` | Instalador que deja LanguageTool como **servicio de Windows** local (sin límites, los mensajes no salen del PC). |
 | `web/` | Versión de página web del corrector (usa Claude para revisar el texto). |
 
@@ -38,7 +38,12 @@ Para quitarlo: **DESINSTALAR.bat** como administrador.
 
 ## Uso
 
-Escribe el mensaje y pulsa el botón azul **✓** (o `Alt+Shift+C`). Haz clic en una sugerencia o en **Aplicar todas**.
+- **Automático:** mientras escribes, las palabras con error se subrayan con una línea ondulada
+  (rojo = ortografía, amarillo = gramática, morado = puntuación, azul = estilo).
+- Pasa el mouse o haz clic sobre la palabra subrayada para ver las alternativas y corregirla con un clic.
+  También puedes **Ignorar** o **Añadir al diccionario**.
+- El ícono pequeño junto al cuadro de texto muestra cuántos errores hay. Al hacer clic (o `Alt+Shift+C`)
+  abre la lista completa, con **Aplicar todas**, el idioma y la opción para desactivar la revisión automática.
 
 ## Tecnologías
 

@@ -1,55 +1,80 @@
 (() => {
-  // ---------- Interfaz (dentro de un Shadow DOM para no chocar con los estilos de WhatsApp) ----------
+  'use strict';
+
+  // ================= Configuración =================
+  const DEBOUNCE_MS = 800;          // espera tras dejar de escribir antes de revisar
+  const COLORS = { ort: '#e5484d', gra: '#f0a020', pun: '#8e4ec6', est: '#2f6df6' };
+  const LABEL = { ort: 'Ortografía', gra: 'Gramática', pun: 'Puntuación', est: 'Estilo' };
+  const settings = { lang: 'es', server: '', auto: true, dict: [] };
+
+  // ================= Interfaz (Shadow DOM) =================
   const host = document.createElement('div');
   host.id = 'corrector-wa-host';
   host.style.cssText = 'position:fixed;z-index:2147483647;top:0;left:0;width:0;height:0;';
   document.documentElement.appendChild(host);
   const root = host.attachShadow({ mode: 'open' });
 
+  const wave = c => `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='3'%3E%3Cpath d='M0 2.5 Q1.5 0 3 2.5 T6 2.5' fill='none' stroke='%23${c.slice(1)}' stroke-width='1.3'/%3E%3C/svg%3E")`;
+
   root.innerHTML = `
   <style>
     *{box-sizing:border-box;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-    .fab{position:fixed;right:22px;bottom:84px;width:44px;height:44px;border-radius:50%;border:0;
-      background:#2f6df6;color:#fff;font-size:20px;font-weight:700;cursor:pointer;
-      box-shadow:0 4px 14px rgba(0,0,0,.25);display:grid;place-items:center}
-    .fab:hover{filter:brightness(1.1)}
-    .fab .badge{position:absolute;top:-4px;right:-4px;background:#e5484d;color:#fff;font-size:11px;
-      min-width:18px;height:18px;border-radius:9px;display:none;place-items:center;padding:0 4px}
-    .panel{position:fixed;right:22px;bottom:138px;width:370px;max-height:65vh;display:none;flex-direction:column;
-      background:#fff;color:#1d2433;border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,.3);overflow:hidden}
-    .panel.open{display:flex}
-    .head{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid #e3e7ef}
-    .head b{flex:1;font-size:15px}
-    select{font-size:13px;padding:4px 6px;border-radius:6px;border:1px solid #d5dae4}
-    .x{background:none;border:0;font-size:20px;cursor:pointer;color:#6b7385}
-    .cfg{display:flex;align-items:center;gap:6px;padding:8px 14px;border-bottom:1px solid #e3e7ef;font-size:12px;color:#6b7385}
-    .cfg input{flex:1;font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid #d5dae4;background:transparent;color:inherit}
-    .body{overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
-    .preview{font-size:14px;line-height:1.6;background:#f4f6fb;border-radius:8px;padding:10px;white-space:pre-wrap;word-wrap:break-word}
-    mark{background:rgba(229,72,77,.18);border-bottom:2px solid #e5484d;color:inherit;border-radius:2px}
-    mark.gra{background:rgba(240,160,32,.22);border-color:#f0a020}
-    mark.pun{background:rgba(142,78,198,.18);border-color:#8e4ec6}
-    mark.est{background:rgba(47,109,246,.15);border-color:#2f6df6}
-    .item{border:1px solid #e3e7ef;border-left:4px solid #e5484d;border-radius:8px;padding:10px}
-    .item.gra{border-left-color:#f0a020}.item.pun{border-left-color:#8e4ec6}.item.est{border-left-color:#2f6df6}
-    .tag{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#6b7385;font-weight:600}
-    .orig{margin:4px 0;font-size:14px}.orig s{color:#e5484d}
-    .msg{font-size:12.5px;color:#6b7385;margin-bottom:8px;line-height:1.4}
-    .sugs{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-    .sug{background:#2f6df6;color:#fff;border:0;border-radius:6px;padding:5px 9px;font-size:13px;font-weight:600;cursor:pointer}
-    .ign{background:none;border:0;color:#6b7385;text-decoration:underline;font-size:12px;cursor:pointer;margin-left:auto}
-    .foot{display:flex;gap:8px;padding:10px 14px;border-top:1px solid #e3e7ef}
-    .btn{flex:1;padding:8px;border-radius:8px;border:1px solid #d5dae4;background:#fff;cursor:pointer;font-size:13px;font-weight:600}
+    :host{--bg:#fff;--ink:#1d2433;--muted:#667085;--line:#e3e7ef;--soft:#f4f6fb}
+    :host([data-theme=dark]){--bg:#233138;--ink:#e9edef;--muted:#9aa7ae;--line:#34434d;--soft:#182229}
+    .ln{position:fixed;height:3px;pointer-events:none;background-repeat:repeat-x;background-size:6px 3px}
+    .ln.ort{background-image:${wave(COLORS.ort)}}
+    .ln.gra{background-image:${wave(COLORS.gra)}}
+    .ln.pun{background-image:${wave(COLORS.pun)}}
+    .ln.est{background-image:${wave(COLORS.est)}}
+
+    .fab{position:fixed;width:22px;height:22px;border-radius:50%;border:0;padding:0;display:none;
+      place-items:center;cursor:pointer;font-size:11px;font-weight:700;color:#fff;background:#25a366;
+      box-shadow:0 1px 4px rgba(0,0,0,.3);opacity:.85;transition:opacity .15s,transform .15s}
+    .fab:hover{opacity:1;transform:scale(1.1)}
+    .fab.show{display:grid}
+    .fab.err{background:${COLORS.ort}}
+    .fab.busy{background:#8696a0}
+    .fab.warn{background:${COLORS.gra}}
+    .fab.off{background:#8696a0;opacity:.5}
+
+    .tip{position:fixed;display:none;width:280px;background:var(--bg);color:var(--ink);border-radius:10px;
+      box-shadow:0 6px 24px rgba(0,0,0,.28);border:1px solid var(--line);overflow:hidden}
+    .tip.show{display:block}
+    .tip .bar{height:3px}
+    .tip .in{padding:10px 12px}
+    .tip .tag{font-size:10px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:var(--muted)}
+    .tip .msg{font-size:13px;line-height:1.4;margin:4px 0 8px}
+    .sugs{display:flex;flex-wrap:wrap;gap:6px}
+    .sug{background:#2f6df6;color:#fff;border:0;border-radius:6px;padding:5px 10px;font-size:14px;font-weight:600;cursor:pointer}
+    .sug:hover{filter:brightness(1.12)}
+    .acts{display:flex;gap:12px;margin-top:9px;border-top:1px solid var(--line);padding-top:7px}
+    .lnk{background:none;border:0;padding:0;color:var(--muted);font-size:12px;cursor:pointer}
+    .lnk:hover{color:var(--ink);text-decoration:underline}
+
+    .panel{position:fixed;width:340px;max-height:60vh;display:none;flex-direction:column;background:var(--bg);color:var(--ink);
+      border-radius:12px;box-shadow:0 10px 36px rgba(0,0,0,.3);border:1px solid var(--line);overflow:hidden}
+    .panel.show{display:flex}
+    .head{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+    .head b{flex:1;font-size:14px}
+    select,input[type=text]{font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--soft);color:var(--ink)}
+    .x{background:none;border:0;font-size:18px;cursor:pointer;color:var(--muted);line-height:1}
+    .cfg{display:flex;flex-direction:column;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)}
+    .cfg label{display:flex;align-items:center;gap:6px}
+    .cfg input[type=text]{flex:1}
+    .list{overflow:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+    .item{border:1px solid var(--line);border-left:4px solid ${COLORS.ort};border-radius:8px;padding:8px 10px}
+    .item.gra{border-left-color:${COLORS.gra}}.item.pun{border-left-color:${COLORS.pun}}.item.est{border-left-color:${COLORS.est}}
+    .item .w{font-size:14px;margin:2px 0}.item .w s{color:${COLORS.ort}}
+    .item .m{font-size:12px;color:var(--muted);margin-bottom:6px}
+    .note{font-size:13px;color:var(--muted);text-align:center;padding:12px 4px}
+    .foot{display:flex;gap:8px;padding:8px 12px;border-top:1px solid var(--line)}
+    .btn{flex:1;padding:7px;border-radius:8px;border:1px solid var(--line);background:var(--soft);color:var(--ink);cursor:pointer;font-size:12px;font-weight:600}
     .btn.primary{background:#2f6df6;color:#fff;border-color:#2f6df6}
     .btn:disabled{opacity:.5;cursor:default}
-    .note{font-size:13px;color:#6b7385;text-align:center;padding:14px 4px}
-    @media (prefers-color-scheme:dark){
-      .panel{background:#1f2c34;color:#e9edef}.head,.foot{border-color:#34434d}
-      .preview{background:#111b21}.item{border-color:#34434d}.btn{background:#2a3942;color:#e9edef;border-color:#34434d}
-      select{background:#2a3942;color:#e9edef;border-color:#34434d}
-    }
   </style>
-  <button class="fab" title="Revisar ortografía (Alt+Shift+C)">✓<span class="badge"></span></button>
+  <div class="lines"></div>
+  <button class="fab" title="Corrector">✓</button>
+  <div class="tip"><div class="bar"></div><div class="in"></div></div>
   <div class="panel">
     <div class="head">
       <b>Corrector</b>
@@ -64,181 +89,389 @@
       </select>
       <button class="x" title="Cerrar">×</button>
     </div>
-    <div class="cfg"><span>Servidor:</span><input class="server" placeholder="Automático (local si está instalado)" spellcheck="false"></div>
-    <div class="body"></div>
+    <div class="cfg">
+      <label><input type="checkbox" class="auto"> Revisar automáticamente mientras escribo</label>
+      <label>Servidor: <input type="text" class="server" placeholder="Automático (local si está instalado)" spellcheck="false"></label>
+      <div class="via"></div>
+    </div>
+    <div class="list"></div>
     <div class="foot">
-      <button class="btn recheck">Revisar de nuevo</button>
+      <button class="btn recheck">Revisar ahora</button>
       <button class="btn primary all">Aplicar todas</button>
     </div>
   </div>`;
 
   const $ = s => root.querySelector(s);
-  const fab = $('.fab'), badge = $('.badge'), panel = $('.panel'), body = $('.body'), lang = $('.lang');
-  let lastEditable = null, state = { text: '', matches: [] }, busy = false;
+  const linesEl = $('.lines'), fab = $('.fab'), tip = $('.tip'), tipIn = $('.tip .in'), tipBar = $('.tip .bar');
+  const panel = $('.panel'), list = $('.list');
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-  const server = $('.server');
-  server.onchange = () => { try { chrome.storage.local.set({ server: server.value.trim() }); } catch (e) {} };
+  // ================= Estado =================
+  let editor = null;        // cuadro de texto de WhatsApp
+  let model = null;         // { text, segs:[{node,start,len}] }
+  let matches = [];         // errores actuales
+  let hits = [];            // rectángulos en pantalla para detectar el mouse
+  let checkedText = '';
+  let timer = null, seq = 0, busy = false, lastError = null, lastVia = '';
+  let tipFor = null, overTip = false, showT = null, hideT = null;
+  const ignored = new Set();
+
+  // ================= Ajustes guardados =================
+  function save(k) { try { chrome.storage.local.set({ [k]: settings[k] }); } catch (e) {} }
   try {
-    chrome.storage.local.get(['lang', 'server'], r => { if (r && r.lang) lang.value = r.lang; if (r && r.server) server.value = r.server; });
+    chrome.storage.local.get(['lang', 'server', 'auto', 'dict'], r => {
+      if (!r) return;
+      if (r.lang) settings.lang = r.lang;
+      if (typeof r.server === 'string') settings.server = r.server;
+      if (typeof r.auto === 'boolean') settings.auto = r.auto;
+      if (Array.isArray(r.dict)) settings.dict = r.dict;
+      $('.lang').value = settings.lang; $('.server').value = settings.server; $('.auto').checked = settings.auto;
+      updateFab();
+    });
   } catch (e) {}
-  lang.onchange = () => { try { chrome.storage.local.set({ lang: lang.value }); } catch (e) {} check(); };
+  $('.lang').value = settings.lang; $('.auto').checked = settings.auto;
+  $('.lang').onchange = e => { settings.lang = e.target.value; save('lang'); check(true); };
+  $('.server').onchange = e => { settings.server = e.target.value.trim(); save('server'); check(true); };
+  $('.auto').onchange = e => { settings.auto = e.target.checked; save('auto'); if (settings.auto) check(true); else { matches = []; redraw(); } updateFab(); };
 
-  // ---------- Localizar el cuadro de texto ----------
-  document.addEventListener('focusin', e => {
-    const el = e.target && e.target.closest && e.target.closest('[contenteditable="true"], textarea');
-    if (el && !host.contains(el)) lastEditable = el;
-  }, true);
+  // ================= Localizar el cuadro de mensaje =================
+  function composeRoot(el) {
+    if (!el || !el.closest) return null;
+    const ce = el.closest('[contenteditable="true"]');
+    if (!ce || host.contains(ce)) return null;
+    const label = [ce.getAttribute('aria-label'), ce.getAttribute('aria-placeholder'), ce.getAttribute('title'), ce.getAttribute('data-tab')].join(' ');
+    if (/buscar|search|pesquisar|rechercher|cerca/i.test(label)) return null;
+    if (ce.closest('footer')) return ce;
+    if (/mensaje|message|mensagem|leyenda|caption|legenda|escribe|type/i.test(label)) return ce;
+    return null;
+  }
+  function findEditor() {
+    if (editor && document.contains(editor)) return editor;
+    const a = composeRoot(document.activeElement);
+    if (a) return setEditor(a);
+    const f = document.querySelector('footer [contenteditable="true"]');
+    return setEditor(f && composeRoot(f) ? f : null);
+  }
+  function setEditor(el) {
+    if (el === editor) return el;
+    editor = el; model = null; matches = []; checkedText = ''; hideTip(); redraw();
+    if (el) schedule();
+    return el;
+  }
 
-  function getEditable() {
-    if (lastEditable && document.contains(lastEditable)) return lastEditable;
-    return document.querySelector('footer [contenteditable="true"]') ||
-           document.querySelector('#main [contenteditable="true"]');
+  // ================= Texto del cuadro y posiciones =================
+  function blockOf(n, rootEl) {
+    let e = n.parentElement;
+    while (e && e !== rootEl) { if (e.tagName === 'P' || e.tagName === 'DIV') return e; e = e.parentElement; }
+    return rootEl;
   }
-  function readText(el) {
-    if (!el) return '';
-    if (el.tagName === 'TEXTAREA') return el.value;
-    return (el.innerText || '').replace(/\n$/, '');
+  function buildModel(rootEl) {
+    const segs = []; let text = '', prev = null;
+    const w = document.createTreeWalker(rootEl, NodeFilter.SHOW_TEXT);
+    let n;
+    while ((n = w.nextNode())) {
+      const b = blockOf(n, rootEl);
+      if (prev && b !== prev) text += '\n';
+      prev = b;
+      if (!n.data.length) continue;
+      segs.push({ node: n, start: text.length, len: n.data.length });
+      text += n.data;
+    }
+    return { text, segs };
   }
-  function writeText(el, text) {
-    el.focus();
-    if (el.tagName === 'TEXTAREA') { el.value = text; el.dispatchEvent(new Event('input', { bubbles: true })); return; }
-    // WhatsApp usa un editor de React: seleccionar todo + insertText actualiza su estado correctamente
-    document.execCommand('selectAll', false, null);
-    document.execCommand('insertText', false, text);
+  function locate(m, o, isStart) {
+    for (const g of m.segs) {
+      if (isStart ? (o >= g.start && o < g.start + g.len) : (o > g.start && o <= g.start + g.len)) return { node: g.node, off: o - g.start };
+    }
+    return null;
+  }
+  function toRange(m, o, len) {
+    const s = locate(m, o, true), e = locate(m, o + len, false);
+    if (!s || !e) return null;
+    try { const r = document.createRange(); r.setStart(s.node, s.off); r.setEnd(e.node, e.off); return r; } catch (er) { return null; }
   }
 
-  // ---------- Utilidades ----------
-  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  function typeOf(m) {
-    const t = (m.rule && m.rule.issueType) || '';
-    const cat = (m.rule && m.rule.category && m.rule.category.id) || '';
+  // ================= Dibujar subrayados =================
+  function redraw() {
+    linesEl.textContent = ''; hits = [];
+    if (editor && document.contains(editor) && model && matches.length) {
+      const box = editor.getBoundingClientRect();
+      for (const m of matches) {
+        const r = toRange(model, m.offset, m.length);
+        if (!r) continue;
+        for (const c of r.getClientRects()) {
+          if (c.width < 1 || c.bottom < box.top - 2 || c.top > box.bottom + 2) continue;
+          const d = document.createElement('div');
+          d.className = 'ln ' + m.type;
+          d.style.left = c.left + 'px'; d.style.top = (c.bottom - 2) + 'px'; d.style.width = c.width + 'px';
+          linesEl.appendChild(d);
+          hits.push({ m, left: c.left, right: c.right, top: c.top, bottom: c.bottom });
+        }
+      }
+    }
+    positionFab();
+  }
+  let rafPending = false;
+  const requestRedraw = () => { if (rafPending) return; rafPending = true; requestAnimationFrame(() => { rafPending = false; if (model && editor) model = buildModel(editor); redraw(); }); };
+  window.addEventListener('resize', requestRedraw);
+  document.addEventListener('scroll', requestRedraw, true);
+  setInterval(() => {
+    const prev = editor; findEditor();
+    host.dataset.theme = (document.body && document.body.classList.contains('dark')) ? 'dark' : 'light';
+    if (editor && editor === prev && model) requestRedraw(); else positionFab();
+  }, 500);
+
+  // ================= Ícono pequeño =================
+  function positionFab() {
+    if (!editor || !document.contains(editor)) { fab.classList.remove('show'); return; }
+    const b = editor.getBoundingClientRect();
+    if (!b.width) { fab.classList.remove('show'); return; }
+    fab.style.left = Math.round(b.right - 24) + 'px';
+    fab.style.top = Math.round(b.top - 26) + 'px';
+    fab.classList.add('show');
+    if (panel.classList.contains('show')) positionPanel();
+  }
+  function updateFab() {
+    fab.className = 'fab' + (editor ? ' show' : '');
+    if (!settings.auto) { fab.classList.add('off'); fab.textContent = '✓'; fab.title = 'Corrector (automático desactivado). Clic para abrir.'; }
+    else if (busy) { fab.classList.add('busy'); fab.textContent = '…'; fab.title = 'Revisando…'; }
+    else if (lastError) { fab.classList.add('warn'); fab.textContent = '!'; fab.title = lastError === 'limite' ? 'Demasiadas revisiones seguidas. Espera un minuto.' : 'No se pudo conectar con el corrector.'; }
+    else if (matches.length) { fab.classList.add('err'); fab.textContent = matches.length > 99 ? '99' : matches.length; fab.title = matches.length + ' posibles errores. Clic para ver la lista.'; }
+    else { fab.textContent = '✓'; fab.title = 'Sin errores'; }
+    positionFab();
+  }
+
+  // ================= Revisión =================
+  function schedule() {
+    clearTimeout(timer);
+    if (!settings.auto) return;
+    timer = setTimeout(() => check(false), lastVia === 'publico' ? 1500 : DEBOUNCE_MS);  // el servicio público tiene límite por minuto
+  }
+  function classify(m) {
+    const t = (m.rule && m.rule.issueType) || '', cat = (m.rule && m.rule.category && m.rule.category.id) || '';
     if (t === 'misspelling' || cat === 'TYPOS') return 'ort';
     if (cat === 'PUNCTUATION' || t === 'typographical' || cat === 'TYPOGRAPHY') return 'pun';
     if (t === 'style' || t === 'locale-violation' || cat === 'STYLE' || cat === 'REDUNDANCY') return 'est';
     return 'gra';
   }
-  const LABEL = { ort: 'Ortografía', gra: 'Gramática', pun: 'Puntuación', est: 'Estilo' };
+  const keyOf = m => m.word.toLowerCase() + '|' + m.rule;
 
-  function setBadge(n) {
-    badge.textContent = n;
-    badge.style.display = n ? 'grid' : 'none';
+  function check(force) {
+    if (!findEditor()) return;
+    const m = buildModel(editor);
+    model = m;
+    if (!m.text.trim()) { matches = []; checkedText = ''; lastError = null; redraw(); updateFab(); renderPanel(); return; }
+    if (!force && m.text === checkedText) return;
+    if (m.text.length > 18000) return;
+    const my = ++seq; busy = true; updateFab();
+    try {
+      chrome.runtime.sendMessage({ type: 'check', text: m.text, language: settings.lang, server: settings.server }, res => {
+        if (my !== seq) return;
+        busy = false;
+        if (chrome.runtime.lastError || !res || res.error) {
+          lastError = res && res.error === 'limite' ? 'limite' : 'conexion';
+          updateFab(); renderPanel(); return;
+        }
+        lastError = null; lastVia = res.via || '';
+        const cur = editor ? buildModel(editor) : null;
+        if (!cur || cur.text !== m.text) { updateFab(); schedule(); return; }  // cambió mientras revisaba
+        model = cur; checkedText = cur.text;
+        const dict = new Set(settings.dict.map(w => w.toLowerCase()));
+        matches = res.matches.filter(x => x.length > 0).map((x, i) => ({
+          id: my + '_' + i, offset: x.offset, length: x.length,
+          word: cur.text.substr(x.offset, x.length), message: x.message || '',
+          reps: (x.replacements || []).slice(0, 5).map(r => r.value),
+          type: classify(x), rule: (x.rule && x.rule.id) || ''
+        })).filter(x => !(x.type === 'ort' && dict.has(x.word.toLowerCase())) && !ignored.has(keyOf(x)));
+        redraw(); updateFab(); renderPanel();
+      });
+    } catch (e) {
+      busy = false; lastError = 'conexion'; updateFab();  // la extensión se recargó: hay que recargar la página
+    }
   }
 
-  // ---------- Revisión ----------
-  function check() {
-    if (busy) return;
-    const el = getEditable();
-    const text = readText(el);
-    panel.classList.add('open');
-    if (!el || !text.trim()) {
-      body.innerHTML = '<div class="note">Escribe un mensaje en el chat y pulsa el botón ✓ para revisarlo.</div>';
-      state = { text: '', matches: [] }; setBadge(0); updateFoot(); return;
+  // Al escribir: mover los subrayados que siguen siendo válidos y programar otra revisión
+  document.addEventListener('input', e => {
+    const ce = composeRoot(e.target);
+    if (!ce) return;
+    if (ce !== editor) setEditor(ce);
+    hideTip();
+    const old = model ? model.text : '';
+    const nm = buildModel(editor);
+    const nw = nm.text;
+    let p = 0; while (p < old.length && p < nw.length && old[p] === nw[p]) p++;
+    let so = old.length, sn = nw.length; while (so > p && sn > p && old[so - 1] === nw[sn - 1]) { so--; sn--; }
+    const delta = nw.length - old.length;
+    matches = matches
+      .filter(m => m.offset + m.length < p || m.offset > so)
+      .map(m => m.offset > so ? { ...m, offset: m.offset + delta } : m)
+      .filter(m => nw.substr(m.offset, m.length) === m.word);
+    model = nm;
+    redraw(); updateFab();
+    schedule();
+  }, true);
+
+  document.addEventListener('focusin', e => { const ce = composeRoot(e.target); if (ce && ce !== editor) setEditor(ce); }, true);
+
+  // ================= Reemplazar una palabra =================
+  async function replaceMatch(m, rep) {
+    hideTip();
+    if (!editor) return;
+    const cur = buildModel(editor);
+    if (cur.text.substr(m.offset, m.length) !== m.word) { check(true); return; }
+    const expected = cur.text.slice(0, m.offset) + rep + cur.text.slice(m.offset + m.length);
+    matches = matches.filter(x => x.id !== m.id);
+    const r = toRange(cur, m.offset, m.length);
+    editor.focus();
+    if (r) {
+      const sel = window.getSelection();
+      sel.removeAllRanges(); sel.addRange(r);
+      document.dispatchEvent(new Event('selectionchange'));
+      await sleep(40);
+      document.execCommand('insertText', false, rep);
+      await sleep(40);
     }
-    busy = true;
-    body.innerHTML = '<div class="note">Revisando…</div>';
-    chrome.runtime.sendMessage({ type: 'check', text, language: lang.value, server: server.value.trim() }, res => {
-      busy = false;
-      if (chrome.runtime.lastError || !res || res.error) {
-        const lim = res && res.error === 'limite';
-        body.innerHTML = `<div class="note">${lim ? 'Demasiadas revisiones seguidas. Espera un minuto.' : (server.value.trim() ? 'No se pudo conectar con tu servidor (' + esc(server.value.trim()) + '). ¿Está encendido?' : 'No se pudo conectar con el servicio de corrección. Revisa tu conexión.')}</div>`;
-        return;
-      }
-      state = {
-        text,
-        via: res.via,
-        matches: res.matches.map((m, i) => ({
-          id: i, offset: m.offset, length: m.length, message: m.message,
-          reps: (m.replacements || []).slice(0, 4).map(r => r.value), type: typeOf(m)
-        }))
-      };
-      render();
+    if (buildModel(editor).text !== expected) {      // plan B: reescribir todo el mensaje
+      editor.focus();
+      document.execCommand('selectAll', false, null);
+      document.execCommand('insertText', false, expected);
+      await sleep(40);
+    }
+    renderPanel();
+  }
+
+  async function applyAll() {
+    if (!editor) return;
+    const cur = buildModel(editor);
+    let t = cur.text;
+    const todo = matches.filter(m => m.reps.length && t.substr(m.offset, m.length) === m.word).sort((a, b) => b.offset - a.offset);
+    if (!todo.length) return;
+    let lastStart = Infinity;
+    for (const m of todo) { if (m.offset + m.length > lastStart) continue; t = t.slice(0, m.offset) + m.reps[0] + t.slice(m.offset + m.length); lastStart = m.offset; }
+    matches = [];
+    editor.focus();
+    document.execCommand('selectAll', false, null);
+    document.execCommand('insertText', false, t);
+    await sleep(40);
+    renderPanel();
+  }
+
+  // ================= Recuadro de sugerencias =================
+  function hitTest(x, y) { return hits.find(h => x >= h.left - 1 && x <= h.right + 1 && y >= h.top - 1 && y <= h.bottom + 3); }
+
+  function showTip(m, rect) {
+    clearTimeout(hideT);
+    tipFor = m;
+    tipBar.style.background = COLORS[m.type];
+    tipIn.innerHTML = `<div class="tag">${LABEL[m.type]}</div><div class="msg">${esc(m.message)}</div><div class="sugs"></div><div class="acts"></div>`;
+    const sg = tipIn.querySelector('.sugs'), acts = tipIn.querySelector('.acts');
+    if (!m.reps.length) sg.innerHTML = '<span class="lnk" style="cursor:default">Sin sugerencias</span>';
+    m.reps.forEach(r => {
+      const b = document.createElement('button');
+      b.className = 'sug'; b.textContent = r === '' ? '(eliminar)' : r;
+      b.addEventListener('mousedown', e => e.preventDefault());
+      b.onclick = () => replaceMatch(m, r);
+      sg.appendChild(b);
     });
-  }
-
-  function render() {
-    const { text, matches } = state;
-    setBadge(matches.length);
-    updateFoot();
-    const via = { local: 'Revisado en tu PC (servicio local)', publico: 'Revisado con el servicio público', propio: 'Revisado con tu servidor' }[state.via] || '';
-    $('.cfg span').title = via;
-    if (!matches.length) { body.innerHTML = '<div class="note">🎉 No se encontraron errores.<br><small>' + via + '</small></div>'; return; }
-    let html = '', pos = 0;
-    for (const m of [...matches].sort((a, b) => a.offset - b.offset)) {
-      if (m.offset < pos) continue;
-      html += esc(text.slice(pos, m.offset)) + `<mark class="${m.type}">${esc(text.slice(m.offset, m.offset + m.length))}</mark>`;
-      pos = m.offset + m.length;
+    const ig = document.createElement('button');
+    ig.className = 'lnk'; ig.textContent = 'Ignorar';
+    ig.addEventListener('mousedown', e => e.preventDefault());
+    ig.onclick = () => { ignored.add(keyOf(m)); matches = matches.filter(x => x.id !== m.id); hideTip(); redraw(); updateFab(); renderPanel(); };
+    acts.appendChild(ig);
+    if (m.type === 'ort') {
+      const ad = document.createElement('button');
+      ad.className = 'lnk'; ad.textContent = 'Añadir al diccionario';
+      ad.addEventListener('mousedown', e => e.preventDefault());
+      ad.onclick = () => {
+        const w = m.word.toLowerCase();
+        if (!settings.dict.includes(w)) { settings.dict.push(w); save('dict'); }
+        matches = matches.filter(x => !(x.type === 'ort' && x.word.toLowerCase() === w));
+        hideTip(); redraw(); updateFab(); renderPanel();
+      };
+      acts.appendChild(ad);
     }
-    html += esc(text.slice(pos));
-    body.innerHTML = `<div class="preview">${html}</div>`;
-    for (const m of matches) {
+    tip.classList.add('show');
+    const h = tip.offsetHeight, w = tip.offsetWidth;
+    let left = Math.min(Math.max(8, rect.left), window.innerWidth - w - 8);
+    let top = rect.top - h - 8;                       // el cuadro de WhatsApp está abajo: preferir arriba
+    if (top < 8) top = rect.bottom + 8;
+    tip.style.left = left + 'px'; tip.style.top = top + 'px';
+  }
+  function hideTip() { clearTimeout(showT); clearTimeout(hideT); tip.classList.remove('show'); tipFor = null; overTip = false; }
+  function scheduleHide() { clearTimeout(hideT); hideT = setTimeout(() => { if (!overTip) hideTip(); }, 350); }
+  tip.addEventListener('mouseenter', () => { overTip = true; clearTimeout(hideT); });
+  tip.addEventListener('mouseleave', () => { overTip = false; scheduleHide(); });
+
+  document.addEventListener('mousemove', e => {
+    if (!hits.length) return;
+    const h = hitTest(e.clientX, e.clientY);
+    if (h) {
+      clearTimeout(hideT);
+      if (!tipFor || tipFor.id !== h.m.id) { clearTimeout(showT); showT = setTimeout(() => showTip(h.m, h), 300); }
+    } else {
+      clearTimeout(showT);
+      if (tipFor && !overTip) scheduleHide();
+    }
+  }, true);
+  document.addEventListener('click', e => {
+    const h = hitTest(e.clientX, e.clientY);
+    if (h) { clearTimeout(showT); showTip(h.m, h); }
+    else if (tipFor && !host.contains(e.target)) hideTip();
+  }, true);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { hideTip(); panel.classList.remove('show'); }
+    if (e.altKey && e.shiftKey && (e.key === 'C' || e.key === 'c')) { e.preventDefault(); togglePanel(); }
+  }, true);
+
+  // ================= Panel con la lista =================
+  function positionPanel() {
+    const fl = parseFloat(fab.style.left) || window.innerWidth - 40, ft = parseFloat(fab.style.top) || window.innerHeight - 100;
+    panel.style.left = Math.max(8, Math.min(fl + 22 - 340, window.innerWidth - 348)) + 'px';
+    panel.style.bottom = Math.max(8, window.innerHeight - ft + 8) + 'px';
+  }
+  function togglePanel() {
+    if (panel.classList.contains('show')) { panel.classList.remove('show'); return; }
+    findEditor(); positionPanel(); panel.classList.add('show'); hideTip();
+    if (!settings.auto || !checkedText) check(true);
+    renderPanel();
+  }
+  function renderPanel() {
+    if (!panel.classList.contains('show')) return;
+    const via = { local: 'Revisando en tu PC (servicio local) ✔', publico: 'Revisando con el servicio público de LanguageTool', propio: 'Revisando con tu servidor' }[lastVia] || '';
+    $('.via').textContent = via;
+    $('.all').disabled = !matches.some(m => m.reps.length);
+    if (!editor) { list.innerHTML = '<div class="note">Abre un chat y escribe un mensaje.</div>'; return; }
+    if (busy) { list.innerHTML = '<div class="note">Revisando…</div>'; return; }
+    if (lastError) { list.innerHTML = `<div class="note">${lastError === 'limite' ? 'Demasiadas revisiones seguidas. Espera un minuto.' : 'No se pudo conectar con el corrector.'}</div>`; return; }
+    if (!matches.length) { list.innerHTML = '<div class="note">🎉 No hay errores en el mensaje.</div>'; return; }
+    list.innerHTML = '';
+    [...matches].sort((a, b) => a.offset - b.offset).forEach(m => {
       const d = document.createElement('div');
       d.className = 'item ' + m.type;
-      d.innerHTML = `<div class="tag">${LABEL[m.type]}</div>
-        <div class="orig"><s>${esc(text.slice(m.offset, m.offset + m.length))}</s></div>
-        <div class="msg">${esc(m.message || '')}</div><div class="sugs"></div>`;
+      d.innerHTML = `<div class="tag" style="font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700">${LABEL[m.type]}</div>
+        <div class="w"><s>${esc(m.word)}</s></div><div class="m">${esc(m.message)}</div><div class="sugs"></div>`;
       const sg = d.querySelector('.sugs');
-      m.reps.forEach(r => {
+      m.reps.slice(0, 4).forEach(r => {
         const b = document.createElement('button');
-        b.className = 'sug'; b.textContent = r || '(eliminar)';
-        b.onclick = () => apply(m.id, r);
+        b.className = 'sug'; b.textContent = r === '' ? '(eliminar)' : r;
+        b.addEventListener('mousedown', e => e.preventDefault());
+        b.onclick = () => replaceMatch(m, r);
         sg.appendChild(b);
       });
       const ig = document.createElement('button');
-      ig.className = 'ign'; ig.textContent = 'Ignorar';
-      ig.onclick = () => { state.matches = state.matches.filter(x => x.id !== m.id); render(); };
+      ig.className = 'lnk'; ig.textContent = 'Ignorar'; ig.style.marginLeft = 'auto';
+      ig.onclick = () => { ignored.add(keyOf(m)); matches = matches.filter(x => x.id !== m.id); redraw(); updateFab(); renderPanel(); };
       sg.appendChild(ig);
-      body.appendChild(d);
-    }
+      list.appendChild(d);
+    });
   }
+  fab.addEventListener('mousedown', e => e.preventDefault());
+  fab.onclick = togglePanel;
+  $('.x').onclick = () => panel.classList.remove('show');
+  $('.recheck').onclick = () => check(true);
+  $('.all').addEventListener('mousedown', e => e.preventDefault());
+  $('.all').onclick = applyAll;
 
-  function updateFoot() {
-    $('.all').disabled = !state.matches.some(m => m.reps.length);
-  }
-
-  function replaceIn(text, matches, m, rep) {
-    const delta = rep.length - m.length, end = m.offset + m.length;
-    const newText = text.slice(0, m.offset) + rep + text.slice(end);
-    const rest = matches.filter(x => x.id !== m.id)
-      .filter(x => x.offset + x.length <= m.offset || x.offset >= end)
-      .map(x => x.offset >= end ? { ...x, offset: x.offset + delta } : x);
-    return { text: newText, matches: rest };
-  }
-
-  function currentMatchesBox() {
-    const el = getEditable();
-    if (!el) return null;
-    if (readText(el) !== state.text) {
-      body.insertAdjacentHTML('afterbegin', '<div class="note">El mensaje cambió. Pulsa «Revisar de nuevo».</div>');
-      return null;
-    }
-    return el;
-  }
-
-  function apply(id, rep) {
-    const el = currentMatchesBox(); if (!el) return;
-    const m = state.matches.find(x => x.id === id); if (!m) return;
-    state = replaceIn(state.text, state.matches, m, rep);
-    writeText(el, state.text);
-    render();
-  }
-
-  $('.all').onclick = () => {
-    const el = currentMatchesBox(); if (!el) return;
-    const todo = state.matches.filter(m => m.reps.length).sort((a, b) => b.offset - a.offset);
-    for (const m of todo) {
-      if (!state.matches.find(x => x.id === m.id)) continue;
-      state = replaceIn(state.text, state.matches, m, m.reps[0]);
-    }
-    writeText(el, state.text);
-    render();
-  };
-
-  fab.addEventListener('mousedown', e => e.preventDefault()); // no quitar el foco del chat
-  fab.onclick = () => { if (panel.classList.contains('open') && !busy && state.text === readText(getEditable())) { panel.classList.remove('open'); } else check(); };
-  $('.x').onclick = () => panel.classList.remove('open');
-  $('.recheck').onclick = check;
-
-  document.addEventListener('keydown', e => {
-    if (e.altKey && e.shiftKey && (e.key === 'C' || e.key === 'c')) { e.preventDefault(); check(); }
-  }, true);
+  findEditor();
 })();
