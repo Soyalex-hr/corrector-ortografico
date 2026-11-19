@@ -47,6 +47,8 @@ Para quitarlo: **DESINSTALAR.bat** como administrador.
   (rojo = ortografía, amarillo = gramática, morado = puntuación, azul = estilo).
 - Pasa el mouse o haz clic sobre la palabra subrayada para ver las alternativas y corregirla con un clic.
   También puedes **Ignorar** o **Añadir al diccionario**.
+- Reglas propias para español: avisa cuando falta el **¿** o el **¡** de apertura y cuando falta la tilde
+  en preguntas y exclamaciones (`que haces?` → `¿Qué haces?`, `que bonito!` → `¡Qué bonito!`).
 - Funciona en cuadros de texto normales y en editores enriquecidos (Gmail, Outlook, WhatsApp…).
   No actúa en buscadores, campos de una sola línea ni editores de código. Google Docs no es compatible.
 - Con el ícono de la extensión en la barra de Chrome puedes **activarla o desactivarla en cada sitio**,

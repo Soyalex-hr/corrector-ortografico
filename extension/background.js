@@ -22,6 +22,15 @@ async function check(msg) {
   let base = (msg.server || '').trim();
   if (!base) base = (await localAvailable()) ? LOCAL : PUBLIC;
   base = base.replace(/\/+$/, '').replace(/\/v2(\/check)?$/, '');
+  try { return await checkAt(base, msg); }
+  catch (e) {
+    if (base === PUBLIC || msg.server || e.message === 'limite') throw e;   // si elegiste un servidor, no se usa otro sin avisar
+    localOk = null;                       // el servidor elegido falló: usar el público
+    return await checkAt(PUBLIC, msg);
+  }
+}
+
+async function checkAt(base, msg) {
   const body = new URLSearchParams({ text: msg.text, language: msg.language || 'es' });
   if (msg.language === 'auto') body.set('preferredVariants', 'en-US,pt-BR,de-DE');
   const r = await fetch(base + '/v2/check', {

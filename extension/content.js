@@ -327,11 +327,16 @@
     fab.classList.add('show');
     if (panel.classList.contains('show')) positionPanel();
   }
+  function errorText() {
+    if (lastError === 'limite') return 'Demasiadas revisiones seguidas. Espera un minuto.';
+    if (lastError === 'recargar') return 'La extensión se actualizó. Recarga esta página (F5).';
+    return 'No se pudo conectar con el corrector. Revisa tu conexión o el servicio local.';
+  }
   function updateFab() {
     fab.className = 'fab' + (editor ? ' show' : '');
     if (!settings.auto) { fab.classList.add('off'); fab.textContent = '✓'; fab.title = 'Corrector (automático desactivado). Clic para abrir.'; }
     else if (busy) { fab.classList.add('busy'); fab.textContent = '…'; fab.title = 'Revisando…'; }
-    else if (lastError) { fab.classList.add('warn'); fab.textContent = '!'; fab.title = lastError === 'limite' ? 'Demasiadas revisiones seguidas. Espera un minuto.' : 'No se pudo conectar con el corrector.'; }
+    else if (lastError) { fab.classList.add('warn'); fab.textContent = '!'; fab.title = errorText(); }
     else if (matches.length) { fab.classList.add('err'); fab.textContent = matches.length > 99 ? '99' : matches.length; fab.title = matches.length + ' posibles errores. Clic para ver la lista.'; }
     else { fab.textContent = '✓'; fab.title = 'Sin errores'; }
     positionFab();
@@ -352,6 +357,59 @@
   }
   const keyOf = m => m.word.toLowerCase() + '|' + m.rule;
 
+  // ---- Reglas propias para español (LanguageTool no detecta bien el ¿ ¡ que falta) ----
+  const INTERROG = { que: 'qué', como: 'cómo', donde: 'dónde', adonde: 'adónde', cuando: 'cuándo', cuanto: 'cuánto',
+    cuanta: 'cuánta', cuantos: 'cuántos', cuantas: 'cuántas', quien: 'quién', quienes: 'quiénes', cual: 'cuál', cuales: 'cuáles' };
+  const QWORD = /,\s*((?:por\s+)?(?:qu[eé]|c[oó]mo|d[oó]nde|cu[aá]ndo|cu[aá]nt[oa]s?|qui[eé]n(?:es)?|cu[aá]l(?:es)?))(?![\p{L}])/giu;
+  const sameCase = (orig, w) => orig[0] === orig[0].toUpperCase() && orig[0] !== orig[0].toLowerCase() ? w[0].toUpperCase() + w.slice(1) : w;
+  function localRules(text) {
+    if (!(settings.lang === 'es' || settings.lang === 'auto')) return [];
+    const out = [], OPEN = { '?': '¿', '!': '¡' };
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (!OPEN[ch] || (i > 0 && (text[i - 1] === '?' || text[i - 1] === '!'))) continue;
+      let s = i - 1;
+      while (s >= 0 && !'.?!\n'.includes(text[s])) s--;
+      const segStart = s + 1, seg = text.slice(segStart, i), open = OPEN[ch];
+      if (!seg.trim()) continue;
+      const hasOpen = seg.includes(open);
+      let qStart;
+      if (hasOpen) qStart = segStart + seg.lastIndexOf(open) + 1;
+      else {
+        qStart = segStart + (seg.length - seg.trimStart().length);
+        if (ch === '?') { let mm, last = null; QWORD.lastIndex = 0; while ((mm = QWORD.exec(seg))) last = mm; if (last) qStart = segStart + last.index + last[0].indexOf(last[1]); }
+      }
+      const rest = text.slice(qStart, i);
+      let wm = /^por\s+que(?![\p{L}])/iu.exec(rest) || /^[\p{L}\p{N}]+/u.exec(rest);
+      if (!wm) continue;
+      const word = wm[0];
+      let fixed = word, accent = false;
+      const lw = word.toLowerCase().replace(/\s+/g, ' ');
+      if (ch === '?') {
+        if (lw === 'por que') { fixed = sameCase(word, 'por qué'); accent = true; }
+        else if (INTERROG[lw]) { fixed = sameCase(word, INTERROG[lw]); accent = true; }
+      } else if (/^(que|como|cuanto|cuanta|cuantos|cuantas)$/.test(lw)) {
+        // ¡Qué bonito! lleva tilde; ¡Que te vaya bien! (deseo) no
+        const next = (/^[\p{L}]+\s+([\p{L}]+)/u.exec(rest) || [])[1] || '';
+        if (!/^(te|le|se|lo|la|los|las|les|nos|me|os|no|tengas|tenga|tengan|vaya|vayas|vayan|descanses|descanse|disfrutes|disfrute|est[eé]s|est[eé]|sea|seas|sean|dios|viva|vivan)$/i.test(next)) {
+          fixed = sameCase(word, INTERROG[lw]); accent = true;
+        }
+      }
+      const atSentenceStart = !text.slice(segStart, qStart).replace(open, '').trim();
+      if (!hasOpen) {
+        if (atSentenceStart) fixed = fixed[0].toUpperCase() + fixed.slice(1);
+        out.push({ id: 'loc' + i, offset: qStart, length: word.length, word, type: 'pun', rule: 'LOCAL_OPEN_' + (ch === '?' ? 'Q' : 'E'),
+          message: `En español las ${ch === '?' ? 'preguntas' : 'exclamaciones'} se abren con «${open}».` + (accent ? ` Además, «${fixed}» lleva tilde.` : ''),
+          reps: [open + fixed] });
+      } else if (accent && fixed !== word) {
+        if (atSentenceStart) fixed = fixed[0].toUpperCase() + fixed.slice(1);
+        out.push({ id: 'loc' + i, offset: qStart, length: word.length, word, type: 'ort', rule: 'LOCAL_ACCENT',
+          message: `En ${ch === '?' ? 'preguntas' : 'exclamaciones'}, «${fixed}» lleva tilde.`, reps: [fixed] });
+      }
+    }
+    return out;
+  }
+
   function check(force) {
     if (!findEditor()) return;
     const m = buildModel(editor);
@@ -359,6 +417,7 @@
     if (!m.text.trim()) { matches = []; checkedText = ''; lastError = null; redraw(); updateFab(); renderPanel(); return; }
     if (!force && m.text === checkedText) return;
     if (m.text.length > 18000) return;
+    if (!(chrome.runtime && chrome.runtime.id)) { lastError = 'recargar'; updateFab(); renderPanel(); return; }
     const my = ++seq; busy = true; updateFab();
     try {
       chrome.runtime.sendMessage({ type: 'check', text: m.text, language: settings.lang, server: settings.server }, res => {
@@ -373,16 +432,19 @@
         if (!cur || cur.text !== m.text) { updateFab(); schedule(); return; }  // cambió mientras revisaba
         model = cur; checkedText = cur.text;
         const dict = new Set(settings.dict.map(w => w.toLowerCase()));
-        matches = res.matches.filter(x => x.length > 0).map((x, i) => ({
+        const extra = localRules(cur.text);
+        const overlaps = x => extra.some(e => x.offset < e.offset + e.length && e.offset < x.offset + x.length);
+        matches = res.matches.filter(x => x.length > 0 && !overlaps(x)).map((x, i) => ({
           id: my + '_' + i, offset: x.offset, length: x.length,
           word: cur.text.substr(x.offset, x.length), message: x.message || '',
           reps: (x.replacements || []).slice(0, 5).map(r => r.value),
           type: classify(x), rule: (x.rule && x.rule.id) || ''
-        })).filter(x => !(x.type === 'ort' && dict.has(x.word.toLowerCase())) && !ignored.has(keyOf(x)));
+        })).concat(extra).sort((a, b) => a.offset - b.offset)
+          .filter(x => !(x.type === 'ort' && dict.has(x.word.toLowerCase())) && !ignored.has(keyOf(x)));
         redraw(); updateFab(); renderPanel();
       });
     } catch (e) {
-      busy = false; lastError = 'conexion'; updateFab();  // la extensión se recargó: hay que recargar la página
+      busy = false; lastError = 'recargar'; updateFab(); renderPanel();  // la extensión se actualizó: hay que recargar la página
     }
   }
 
@@ -552,7 +614,7 @@
     if (siteDisabled()) { list.innerHTML = '<div class="note">El corrector está desactivado en este sitio.</div>'; return; }
     if (!editor) { list.innerHTML = '<div class="note">Haz clic en un cuadro de texto y escribe.</div>'; return; }
     if (busy) { list.innerHTML = '<div class="note">Revisando…</div>'; return; }
-    if (lastError) { list.innerHTML = `<div class="note">${lastError === 'limite' ? 'Demasiadas revisiones seguidas. Espera un minuto.' : 'No se pudo conectar con el corrector.'}</div>`; return; }
+    if (lastError) { list.innerHTML = `<div class="note">${errorText()}</div>`; return; }
     if (!matches.length) { list.innerHTML = '<div class="note">🎉 No hay errores en el texto.</div>'; return; }
     list.innerHTML = '';
     [...matches].sort((a, b) => a.offset - b.offset).forEach(m => {
