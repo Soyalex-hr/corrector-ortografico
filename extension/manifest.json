@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
-  "name": "Corrector para WhatsApp Web",
-  "version": "2.0.0",
-  "description": "Subraya los errores de ortografía y gramática mientras escribes en WhatsApp Web y te sugiere cómo corregirlos.",
+  "name": "Corrector ortográfico",
+  "version": "3.0.0",
+  "description": "Subraya los errores de ortografía, gramática y puntuación mientras escribes en cualquier página (WhatsApp Web, Gmail, Outlook, formularios…) y sugiere cómo corregirlos.",
   "permissions": [
-    "storage"
+    "storage",
+    "activeTab"
   ],
   "host_permissions": [
     "https://api.languagetool.org/*",
@@ -19,17 +20,30 @@
   "content_scripts": [
     {
       "matches": [
-        "https://web.whatsapp.com/*"
+        "<all_urls>"
+      ],
+      "exclude_matches": [
+        "https://docs.google.com/*"
       ],
       "js": [
         "content.js"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": true,
+      "match_about_blank": true
     }
   ],
   "icons": {
     "16": "icon16.png",
     "48": "icon48.png",
     "128": "icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Corrector ortográfico",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png"
+    }
   }
 }

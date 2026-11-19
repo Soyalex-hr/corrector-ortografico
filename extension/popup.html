@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<style>
+  body{margin:0;width:270px;font-family:Segoe UI,Roboto,Arial,sans-serif;font-size:13px;color:#1d2433;background:#fff}
+  header{display:flex;align-items:center;gap:8px;padding:12px 14px;background:#2f6df6;color:#fff;font-weight:700;font-size:14px}
+  .dot{width:20px;height:20px;border-radius:50%;background:#fff;color:#2f6df6;display:grid;place-items:center;font-size:12px}
+  main{padding:12px 14px;display:flex;flex-direction:column;gap:12px}
+  label{display:flex;align-items:center;gap:8px;cursor:pointer}
+  .site{color:#667085;font-size:12px;margin-left:24px;margin-top:-8px;word-break:break-all}
+  select{width:100%;padding:6px;border-radius:6px;border:1px solid #d5dae4;font-size:13px}
+  .muted{color:#667085;font-size:12px}
+  .status{font-size:12px;padding:8px;border-radius:8px;background:#f4f6fb}
+  .ok{color:#1a7f4b}.warn{color:#b26b00}
+  @media (prefers-color-scheme:dark){body{background:#1f2c34;color:#e9edef}.status{background:#111b21}select{background:#2a3942;color:#e9edef;border-color:#34434d}}
+</style>
+</head>
+<body>
+<header><div class="dot">✓</div>Corrector ortográfico</header>
+<main>
+  <label><input type="checkbox" id="site"> Activo en este sitio</label>
+  <div class="site" id="sitename">—</div>
+  <label><input type="checkbox" id="auto"> Revisar mientras escribo</label>
+  <div>
+    <div class="muted" style="margin-bottom:4px">Idioma</div>
+    <select id="lang">
+      <option value="es">Español</option>
+      <option value="auto">Detectar idioma</option>
+      <option value="en-US">Inglés</option>
+      <option value="pt-BR">Portugués</option>
+      <option value="fr">Francés</option>
+      <option value="it">Italiano</option>
+      <option value="de-DE">Alemán</option>
+    </select>
+  </div>
+  <div class="status" id="status">Comprobando servicio local…</div>
+</main>
+<script src="popup.js"></script>
+</body>
+</html>

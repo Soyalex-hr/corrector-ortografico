@@ -5,7 +5,11 @@
   const DEBOUNCE_MS = 800;          // espera tras dejar de escribir antes de revisar
   const COLORS = { ort: '#e5484d', gra: '#f0a020', pun: '#8e4ec6', est: '#2f6df6' };
   const LABEL = { ort: 'Ortografía', gra: 'Gramática', pun: 'Puntuación', est: 'Estilo' };
-  const settings = { lang: 'es', server: '', auto: true, dict: [] };
+  const settings = { lang: 'es', server: '', auto: true, dict: [], disabledSites: [] };
+  const IS_WA = location.hostname === 'web.whatsapp.com';
+  const SITE = location.hostname;
+  const siteDisabled = () => settings.disabledSites.includes(SITE);
+  const CODE_EDITORS = '.monaco-editor, .CodeMirror, .cm-editor, .ace_editor';
 
   // ================= Interfaz (Shadow DOM) =================
   const host = document.createElement('div');
@@ -71,6 +75,7 @@
     .btn{flex:1;padding:7px;border-radius:8px;border:1px solid var(--line);background:var(--soft);color:var(--ink);cursor:pointer;font-size:12px;font-weight:600}
     .btn.primary{background:#2f6df6;color:#fff;border-color:#2f6df6}
     .btn:disabled{opacity:.5;cursor:default}
+    .mirror *{font:inherit !important;letter-spacing:inherit !important;box-sizing:content-box !important}
   </style>
   <div class="lines"></div>
   <button class="fab" title="Corrector">✓</button>
@@ -91,6 +96,7 @@
     </div>
     <div class="cfg">
       <label><input type="checkbox" class="auto"> Revisar automáticamente mientras escribo</label>
+      <label><input type="checkbox" class="site"> Activo en este sitio (<span class="sitename"></span>)</label>
       <label>Servidor: <input type="text" class="server" placeholder="Automático (local si está instalado)" spellcheck="false"></label>
       <div class="via"></div>
     </div>
@@ -120,16 +126,36 @@
   // ================= Ajustes guardados =================
   function save(k) { try { chrome.storage.local.set({ [k]: settings[k] }); } catch (e) {} }
   try {
-    chrome.storage.local.get(['lang', 'server', 'auto', 'dict'], r => {
-      if (!r) return;
-      if (r.lang) settings.lang = r.lang;
-      if (typeof r.server === 'string') settings.server = r.server;
-      if (typeof r.auto === 'boolean') settings.auto = r.auto;
-      if (Array.isArray(r.dict)) settings.dict = r.dict;
-      $('.lang').value = settings.lang; $('.server').value = settings.server; $('.auto').checked = settings.auto;
-      updateFab();
+    chrome.storage.local.get(['lang', 'server', 'auto', 'dict', 'disabledSites'], r => { loadSettings(r); findEditor(); });
+    chrome.storage.onChanged.addListener((ch, area) => {
+      if (area !== 'local') return;
+      const r = {}; for (const k in ch) r[k] = ch[k].newValue;
+      const wasDisabled = siteDisabled(), autoBefore = settings.auto, langBefore = settings.lang;
+      loadSettings(r);
+      if (siteDisabled()) { setEditor(null); panel.classList.remove('show'); }
+      else if (wasDisabled) findEditor();
+      else if (settings.auto !== autoBefore || settings.lang !== langBefore) { if (settings.auto) check(true); else { matches = []; redraw(); updateFab(); } }
     });
   } catch (e) {}
+  function loadSettings(r) {
+    if (!r) return;
+    if (r.lang) settings.lang = r.lang;
+    if (typeof r.server === 'string') settings.server = r.server;
+    if (typeof r.auto === 'boolean') settings.auto = r.auto;
+    if (Array.isArray(r.dict)) settings.dict = r.dict;
+    if (Array.isArray(r.disabledSites)) settings.disabledSites = r.disabledSites;
+    $('.lang').value = settings.lang; $('.server').value = settings.server; $('.auto').checked = settings.auto;
+    $('.site').checked = !siteDisabled();
+    updateFab();
+  }
+  $('.sitename').textContent = SITE || 'esta página';
+  $('.site').checked = true;
+  $('.site').onchange = e => {
+    const list = settings.disabledSites.filter(s => s !== SITE);
+    if (!e.target.checked) list.push(SITE);
+    settings.disabledSites = list; save('disabledSites');
+    if (!e.target.checked) { setEditor(null); } else findEditor();
+  };
   $('.lang').value = settings.lang; $('.auto').checked = settings.auto;
   $('.lang').onchange = e => { settings.lang = e.target.value; save('lang'); check(true); };
   $('.server').onchange = e => { settings.server = e.target.value.trim(); save('server'); check(true); };
@@ -137,21 +163,32 @@
 
   // ================= Localizar el cuadro de mensaje =================
   function composeRoot(el) {
-    if (!el || !el.closest) return null;
-    const ce = el.closest('[contenteditable="true"]');
-    if (!ce || host.contains(ce)) return null;
-    const label = [ce.getAttribute('aria-label'), ce.getAttribute('aria-placeholder'), ce.getAttribute('title'), ce.getAttribute('data-tab')].join(' ');
-    if (/buscar|search|pesquisar|rechercher|cerca/i.test(label)) return null;
-    if (ce.closest('footer')) return ce;
-    if (/mensaje|message|mensagem|leyenda|caption|legenda|escribe|type/i.test(label)) return ce;
-    return null;
+    if (!el || el.nodeType !== 1 || host.contains(el) || siteDisabled()) return null;
+    if (el.tagName === 'TEXTAREA') {
+      if (el.readOnly || el.disabled) return null;
+      if (!IS_WA && el.getAttribute('spellcheck') === 'false') return null;
+      if (el.closest(CODE_EDITORS)) return null;
+      return el;
+    }
+    if (!el.isContentEditable) return null;
+    let ce = el;
+    while (ce.parentElement && ce.parentElement.isContentEditable) ce = ce.parentElement;
+    if (ce.closest(CODE_EDITORS)) return null;
+    const label = [ce.getAttribute('aria-label'), ce.getAttribute('aria-placeholder'), ce.getAttribute('title'), ce.getAttribute('role')].join(' ');
+    if (/buscar|search|pesquisar|rechercher|cerca|combobox/i.test(label)) return null;
+    if (!IS_WA && ce.getAttribute('spellcheck') === 'false') return null;
+    return ce;
   }
   function findEditor() {
-    if (editor && document.contains(editor)) return editor;
+    if (editor && document.contains(editor) && !siteDisabled()) return editor;
     const a = composeRoot(document.activeElement);
     if (a) return setEditor(a);
-    const f = document.querySelector('footer [contenteditable="true"]');
-    return setEditor(f && composeRoot(f) ? f : null);
+    if (IS_WA) {
+      const f = document.querySelector('footer [contenteditable="true"]');
+      const r = f && composeRoot(f);
+      if (r) return setEditor(r);
+    }
+    return setEditor(null);
   }
   function setEditor(el) {
     if (el === editor) return el;
@@ -167,6 +204,7 @@
     return rootEl;
   }
   function buildModel(rootEl) {
+    if (rootEl.tagName === 'TEXTAREA') return { text: rootEl.value, segs: [], ta: true };
     const segs = []; let text = '', prev = null;
     const w = document.createTreeWalker(rootEl, NodeFilter.SHOW_TEXT);
     let n;
@@ -197,11 +235,9 @@
     linesEl.textContent = ''; hits = [];
     if (editor && document.contains(editor) && model && matches.length) {
       const box = editor.getBoundingClientRect();
-      for (const m of matches) {
-        const r = toRange(model, m.offset, m.length);
-        if (!r) continue;
-        for (const c of r.getClientRects()) {
-          if (c.width < 1 || c.bottom < box.top - 2 || c.top > box.bottom + 2) continue;
+      for (const { m, c } of matchRects()) {
+        {
+          if (c.width < 1 || c.bottom < box.top - 2 || c.top > box.bottom + 2 || c.right < box.left || c.left > box.right) continue;
           const d = document.createElement('div');
           d.className = 'ln ' + m.type;
           d.style.left = c.left + 'px'; d.style.top = (c.bottom - 2) + 'px'; d.style.width = c.width + 'px';
@@ -212,13 +248,66 @@
     }
     positionFab();
   }
+  function matchRects() {
+    if (model.ta) return textareaRects(editor, model.text, matches);
+    const out = [];
+    for (const m of matches) {
+      const r = toRange(model, m.offset, m.length);
+      if (r) for (const c of r.getClientRects()) out.push({ m, c });
+    }
+    return out;
+  }
+
+  // En un <textarea> no se pueden medir palabras: se crea una copia invisible con el mismo estilo
+  const MIRROR_PROPS = ['boxSizing', 'width', 'height', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+    'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'borderStyle', 'fontFamily', 'fontSize',
+    'fontWeight', 'fontStyle', 'fontVariant', 'fontStretch', 'letterSpacing', 'wordSpacing', 'lineHeight', 'textTransform',
+    'textIndent', 'tabSize', 'direction', 'textAlign'];
+  let mirror = null;
+  function textareaRects(el, text, list) {
+    if (!mirror) { mirror = document.createElement('div'); mirror.className = 'mirror'; root.appendChild(mirror); }
+    const cs = getComputedStyle(el), b = el.getBoundingClientRect(), st = mirror.style;
+    st.cssText = '';
+    MIRROR_PROPS.forEach(p => { st[p] = cs[p]; });
+    Object.assign(st, { position: 'fixed', left: b.left + 'px', top: b.top + 'px', visibility: 'hidden', overflow: 'hidden',
+      whiteSpace: 'pre-wrap', overflowWrap: 'break-word', wordWrap: 'break-word', pointerEvents: 'none', borderColor: 'transparent' });
+    const sb = el.offsetWidth - el.clientWidth - parseFloat(cs.borderLeftWidth || 0) - parseFloat(cs.borderRightWidth || 0);
+    if (sb > 0) st.paddingRight = (parseFloat(cs.paddingRight || 0) + sb) + 'px';
+    mirror.textContent = '';
+    const inner = document.createElement('div');
+    inner.style.position = 'relative';
+    inner.style.top = (-el.scrollTop) + 'px';
+    inner.style.left = (-el.scrollLeft) + 'px';
+    let pos = 0; const spans = [];
+    for (const m of [...list].sort((a, b) => a.offset - b.offset)) {
+      if (m.offset < pos) continue;
+      inner.appendChild(document.createTextNode(text.slice(pos, m.offset)));
+      const s = document.createElement('span');
+      s.textContent = text.slice(m.offset, m.offset + m.length);
+      inner.appendChild(s); spans.push([m, s]);
+      pos = m.offset + m.length;
+    }
+    inner.appendChild(document.createTextNode(text.slice(pos) + '\u200b'));
+    mirror.appendChild(inner);
+    const out = [];
+    for (const [m, s] of spans) for (const c of s.getClientRects()) out.push({ m, c });
+    return out;
+  }
+  function setNativeValue(el, v) {
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    setter.call(el, v);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
   let rafPending = false;
   const requestRedraw = () => { if (rafPending) return; rafPending = true; requestAnimationFrame(() => { rafPending = false; if (model && editor) model = buildModel(editor); redraw(); }); };
   window.addEventListener('resize', requestRedraw);
   document.addEventListener('scroll', requestRedraw, true);
   setInterval(() => {
     const prev = editor; findEditor();
-    host.dataset.theme = (document.body && document.body.classList.contains('dark')) ? 'dark' : 'light';
+    host.dataset.theme = IS_WA
+      ? ((document.body && document.body.classList.contains('dark')) ? 'dark' : 'light')
+      : (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     if (editor && editor === prev && model) requestRedraw(); else positionFab();
   }, 500);
 
@@ -226,9 +315,15 @@
   function positionFab() {
     if (!editor || !document.contains(editor)) { fab.classList.remove('show'); return; }
     const b = editor.getBoundingClientRect();
-    if (!b.width) { fab.classList.remove('show'); return; }
-    fab.style.left = Math.round(b.right - 24) + 'px';
-    fab.style.top = Math.round(b.top - 26) + 'px';
+    const focused = editor === document.activeElement || editor.contains(document.activeElement);
+    if (!b.width || b.bottom < 0 || b.top > window.innerHeight ||
+        (!IS_WA && !focused && !matches.length && !panel.classList.contains('show'))) { fab.classList.remove('show'); return; }
+    let left, top;
+    if (IS_WA) { left = b.right - 24; top = b.top - 26; }                       // encima del cuadro de WhatsApp
+    else if (b.height >= 44) { left = b.right - 28; top = b.bottom - 28; }      // esquina inferior derecha
+    else { left = b.right - 26; top = b.top + (b.height - 22) / 2; }            // cuadro de una línea
+    fab.style.left = Math.round(left) + 'px';
+    fab.style.top = Math.round(top) + 'px';
     fab.classList.add('show');
     if (panel.classList.contains('show')) positionPanel();
   }
@@ -322,6 +417,13 @@
     if (cur.text.substr(m.offset, m.length) !== m.word) { check(true); return; }
     const expected = cur.text.slice(0, m.offset) + rep + cur.text.slice(m.offset + m.length);
     matches = matches.filter(x => x.id !== m.id);
+    if (cur.ta) {
+      editor.focus();
+      editor.setSelectionRange(m.offset, m.offset + m.length);
+      document.execCommand('insertText', false, rep);
+      if (editor.value !== expected) setNativeValue(editor, expected);
+      renderPanel(); return;
+    }
     const r = toRange(cur, m.offset, m.length);
     editor.focus();
     if (r) {
@@ -351,9 +453,15 @@
     for (const m of todo) { if (m.offset + m.length > lastStart) continue; t = t.slice(0, m.offset) + m.reps[0] + t.slice(m.offset + m.length); lastStart = m.offset; }
     matches = [];
     editor.focus();
-    document.execCommand('selectAll', false, null);
-    document.execCommand('insertText', false, t);
-    await sleep(40);
+    if (cur.ta) {
+      editor.setSelectionRange(0, editor.value.length);
+      document.execCommand('insertText', false, t);
+      if (editor.value !== t) setNativeValue(editor, t);
+    } else {
+      document.execCommand('selectAll', false, null);
+      document.execCommand('insertText', false, t);
+      await sleep(40);
+    }
     renderPanel();
   }
 
@@ -441,10 +549,11 @@
     const via = { local: 'Revisando en tu PC (servicio local) ✔', publico: 'Revisando con el servicio público de LanguageTool', propio: 'Revisando con tu servidor' }[lastVia] || '';
     $('.via').textContent = via;
     $('.all').disabled = !matches.some(m => m.reps.length);
-    if (!editor) { list.innerHTML = '<div class="note">Abre un chat y escribe un mensaje.</div>'; return; }
+    if (siteDisabled()) { list.innerHTML = '<div class="note">El corrector está desactivado en este sitio.</div>'; return; }
+    if (!editor) { list.innerHTML = '<div class="note">Haz clic en un cuadro de texto y escribe.</div>'; return; }
     if (busy) { list.innerHTML = '<div class="note">Revisando…</div>'; return; }
     if (lastError) { list.innerHTML = `<div class="note">${lastError === 'limite' ? 'Demasiadas revisiones seguidas. Espera un minuto.' : 'No se pudo conectar con el corrector.'}</div>`; return; }
-    if (!matches.length) { list.innerHTML = '<div class="note">🎉 No hay errores en el mensaje.</div>'; return; }
+    if (!matches.length) { list.innerHTML = '<div class="note">🎉 No hay errores en el texto.</div>'; return; }
     list.innerHTML = '';
     [...matches].sort((a, b) => a.offset - b.offset).forEach(m => {
       const d = document.createElement('div');

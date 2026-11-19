@@ -1,14 +1,19 @@
-# Corrector ortográfico para WhatsApp Web
+# Corrector ortográfico
 
-Corrector de ortografía, gramática y puntuación al estilo de LanguageTool, pensado para usarse dentro de **WhatsApp Web**.
+Corrector de ortografía, gramática y puntuación al estilo de LanguageTool que funciona en **cualquier página web**: WhatsApp Web, Gmail, Outlook, Facebook, LinkedIn, formularios, etc.
 
 ## Contenido
 
 | Carpeta | Qué es |
 |---|---|
-| `extension/` | Extensión de Chrome/Edge (Manifest V3) que subraya los errores mientras escribes en WhatsApp Web y sugiere correcciones. |
+| `extension/` | Extensión de Chrome/Edge (Manifest V3) que subraya los errores mientras escribes en cualquier página y sugiere correcciones. |
 | `servicio/` | Instalador que deja LanguageTool como **servicio de Windows** local (sin límites, los mensajes no salen del PC). |
 | `web/` | Versión de página web del corrector (usa Claude para revisar el texto). |
+
+## Privacidad
+
+Si el servicio local está instalado, el texto se revisa en tu propio PC. Si no, se envía al servicio público
+de LanguageTool. Como la extensión funciona en todas las páginas, se recomienda instalar el servicio local.
 
 ## Cómo funciona
 
@@ -42,6 +47,10 @@ Para quitarlo: **DESINSTALAR.bat** como administrador.
   (rojo = ortografía, amarillo = gramática, morado = puntuación, azul = estilo).
 - Pasa el mouse o haz clic sobre la palabra subrayada para ver las alternativas y corregirla con un clic.
   También puedes **Ignorar** o **Añadir al diccionario**.
+- Funciona en cuadros de texto normales y en editores enriquecidos (Gmail, Outlook, WhatsApp…).
+  No actúa en buscadores, campos de una sola línea ni editores de código. Google Docs no es compatible.
+- Con el ícono de la extensión en la barra de Chrome puedes **activarla o desactivarla en cada sitio**,
+  cambiar el idioma y ver si está usando el servicio local o el público.
 - El ícono pequeño junto al cuadro de texto muestra cuántos errores hay. Al hacer clic (o `Alt+Shift+C`)
   abre la lista completa, con **Aplicar todas**, el idioma y la opción para desactivar la revisión automática.
 
